@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Builds reusable resources for all recurring serverless CoinBase Pro buys
+
+Parameters:
+  pEmailForAlerts:
+    Description: email address for recieving alerts about automatic buys. 
+    Type: String
+
+Resources: 
+
+  rCoinbaseSNSTopic:
+   Type: AWS::SNS::Topic
+   Properties:
+    DisplayName: 'Coinbase Pro Auto Buy Alerts'
+    TopicName: CoinbaseProAutoBuyAlerts
+    Subscription:
+      - Endpoint: !Ref pEmailForAlerts
+        Protocol: email
+
+  rPlaceCBPOrderLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: placeCBPOrderLambdaRole
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+
+  rPlaceCBPOrderLambdaPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: placeCBPOrderLambdaPolicy
+      Roles:
+       - !Ref rPlaceCBPOrderLambdaRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogStream'
+              - 'logs:CreateLogGroup'
+              - 'logs:PutLogEvents'
+              - 'logs:GetLogEvents'
+            Resource:
+              - 'arn:aws:logs:*:*:*'
+          - Effect: Allow
+            Action:
+              - 'sns:publish'
+            Resource: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:CoinbaseProAutoBuyAlerts'
+
+  

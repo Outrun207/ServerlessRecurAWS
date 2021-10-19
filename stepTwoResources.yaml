@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Builds specific resources for recurring serverless CoinBase Pro buys
+
+Parameters:
+  pCbpPassphrase:
+    Description: api key passphrase 
+    Type: String
+    NoEcho: true
+
+  pCbpSecretKey:
+    Description: secret key for api
+    Type: String
+    NoEcho: true
+
+  pCbpApiKey:
+    Description: api key     
+    Type: String
+    NoEcho: true
+    
+  pBuyAmount:
+    Description: "How much crypto in your preffered currency to buy. Example: 100"
+    Type: Number
+    
+  pCurrency:
+    Description: "Abbreviation for the currency you'd like to purchase crypto in. Example: USD"
+    AllowedValues:
+      - "USD"
+      - "EUR"
+      - "GBP"
+    Type: String
+    Default: USD
+
+  pCryptoToBuy:
+    Description: 'Type of crypto to buy from Coinbase Pro. Example: BTC-USD'
+    Type: String
+
+  pDayToBuy:
+    Description: Day of the month to buy. Must be a number between 1 - 28. 
+    Type: Number
+    Default: 15
+    MinValue: 1
+    MaxValue: 28
+
+  pS3CodeBucket:
+    Description: S3 Bucket name that contains the zipped script files
+    Type: String
+
+Resources: 
+  
+  rScheduledRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: !Sub 'Rule to kick off lambda buy for ${pCryptoToBuy} monthly on specified day.'
+      ScheduleExpression: !Sub 'cron(0 0 ${pDayToBuy} * ? *)'
+      State:  "ENABLED"
+      Targets:
+        - Arn: !Sub ${rPlaceCBPOrderLambda.Arn}
+          Id: LambdaSchedule
+
+  rPermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Sub ${rPlaceCBPOrderLambda.Arn}
+      Action:  'lambda:InvokeFunction'
+      Principal:  'events.amazonaws.com'
+      SourceArn: !Sub ${rScheduledRule.Arn}
+
+  rPlaceCBPOrderLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Calls Coinbase Pro APIs to check balance, deposit money if needed, and buy specificed amount of crypto. 
+      FunctionName: !Sub '${pCryptoToBuy}-placeCBPOrderLambda'
+      Handler: makeOrder.lambda_handler
+      MemorySize: 128
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/placeCBPOrderLambdaRole'
+      Runtime: python3.8
+      Timeout: 3
+      Environment:
+        Variables:
+          API_KEY: !Ref pCbpSecretKey
+          SECRET_KEY: !Ref pCbpApiKey
+          PASSPHRASE: !Ref pCbpPassphrase
+          BUY_AMOUNT: !Ref pBuyAmount
+          CURRENCY: !Ref pCurrency
+          CRYPTO_TO_BUY: !Ref pCryptoToBuy
+          ACCOUNTID: !Sub '${AWS::AccountId}'
+      Code:
+        S3Bucket: !Ref pS3CodeBucket
+        S3Key: makeOrder.zip
+      Tags: 
+        - Key: Classification
+          Value: Confidential
